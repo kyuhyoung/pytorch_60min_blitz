@@ -2,7 +2,7 @@ import torch
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
-
+import torch.optim as optim
 
 class Net(nn.Module):
 
@@ -45,10 +45,34 @@ print(len(params))
 for idx in range(len(params)):
     print(params[idx].size())
 input = Variable(torch.randn(1, 1, 32, 32))
+
+target = Variable(torch.arange(1, 11))
+criterion = nn.MSELoss()
+
+
+optimizer = optim.SGD(net.parameters(), lr=0.01)
+optimizer.zero_grad()
 print(input.size())
+
+
 out = net(input)
+loss = criterion(out, target)
+loss.backward()
+optimizer.step()
 print(out)
 net.zero_grad()
+print('conv1.bias.grad before backward')
+print(net.conv1.bias.grad)
+
+print('conv1.bias.grad after backward')
+print(net.conv1.bias.grad)
+idx = 0
+learning_rate = 0.01
+for f in net.parameters():
+    t4 = f.grad.data * learning_rate
+    print('{} : {}'.format(idx, f.grad.data))
+    f.data.sub_(f.grad.data * learning_rate)
+    idx += 1
 t3 = torch.randn(1, 10)
 t4 = out.backward(t3)
 print(input.grad)
