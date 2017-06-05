@@ -76,4 +76,5 @@ for f in net.parameters():
 t3 = torch.randn(1, 10)
 t4 = out.backward(t3)
 print(input.grad)
+b = 0
 a = 0
