@@ -1,3 +1,5 @@
+#http://pytorch.org/tutorials/beginner/blitz/neural_networks_tutorial.html
+
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
@@ -45,36 +47,52 @@ print(len(params))
 for idx in range(len(params)):
     print(params[idx].size())
 input = Variable(torch.randn(1, 1, 32, 32))
+output = net(input)
+print(output)
 
 target = Variable(torch.arange(1, 11))
 criterion = nn.MSELoss()
+loss = criterion(output, target)
+print(loss)
 
+print(loss.creator)  # MSELoss
+print(loss.creator.previous_functions[0][0])  # Linear
+print(loss.creator.previous_functions[0][0].previous_functions[0][0])  # ReLU
 
-optimizer = optim.SGD(net.parameters(), lr=0.01)
-optimizer.zero_grad()
-print(input.size())
-
-
-out = net(input)
-loss = criterion(out, target)
-loss.backward()
-optimizer.step()
-print(out)
 net.zero_grad()
+
 print('conv1.bias.grad before backward')
 print(net.conv1.bias.grad)
 
+loss.backward()
 print('conv1.bias.grad after backward')
 print(net.conv1.bias.grad)
-idx = 0
-learning_rate = 0.01
-for f in net.parameters():
-    t4 = f.grad.data * learning_rate
-    print('{} : {}'.format(idx, f.grad.data))
-    f.data.sub_(f.grad.data * learning_rate)
-    idx += 1
-t3 = torch.randn(1, 10)
-t4 = out.backward(t3)
-print(input.grad)
-b = 0
-a = 0
+
+lr = 0.01
+optimizer = optim.SGD(net.parameters(), lr=lr)
+
+optimizer.zero_grad()   # zero the gradient buffers
+output = net(input)
+loss = criterion(output, target)
+print('conv1.bias before backward')
+print(net.conv1.bias)
+print('conv1.bias.data before backward')
+print(net.conv1.bias.data)
+print('conv1.bias.grad before backward')
+print(net.conv1.bias.grad)
+t5 = loss.backward()
+print('conv1.bias.grad after backward')
+t8 = net.conv1.bias.grad.data.clone()
+print(net.conv1.bias.grad)
+
+print('conv1.bias afger backward')
+t7 = net.conv1.bias.data.clone()
+print(net.conv1.bias)
+t6 = optimizer.step()
+print('conv1.bias after otim.')
+t9 = t7 - t8 * lr
+print(net.conv1.bias)
+print(t9)
+t10 = t9 == net.conv1.bias.data
+t11 = t10.prod()
+print ('Is the "new bias" equal to "old bias - learning rate * gradient : {}'.format(1 == t11))
