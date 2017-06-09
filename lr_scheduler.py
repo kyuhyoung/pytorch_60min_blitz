@@ -1,3 +1,4 @@
+# web site : https://github.com/Jiaming-Liu/pytorch-lr-scheduler/blob/master/lr_scheduler.py
 import numpy as np
 import warnings
 from torch.optim.optimizer import Optimizer
@@ -78,6 +79,8 @@ class ReduceLROnPlateau(object):
         self._reset()
 
     def step(self, metrics, epoch):
+        is_best_changed = False
+        is_lr_decayed = False
         current = metrics
         if current is None:
             warnings.warn('Learning Rate Plateau Reducing requires metrics available!', RuntimeWarning)
@@ -95,6 +98,7 @@ class ReduceLROnPlateau(object):
                 print('\nThe best is changed from %.3f to %.3f at epoch %d' % (self.best, current, epoch))
                 self.best = current
                 self.wait = 0
+                is_best_changed = True
             else:
                 if not self.in_cooldown():
                     if self.wait >= self.patience:
@@ -108,6 +112,7 @@ class ReduceLROnPlateau(object):
                                     print('\nEpoch %05d: reducing learning rate to %s.' % (epoch, new_lr))
                                 self.cooldown_counter = self.cooldown
                                 self.wait = 0
+                                is_lr_decayed = True
                     self.wait += 1
             '''
             elif not self.in_cooldown():
@@ -124,5 +129,7 @@ class ReduceLROnPlateau(object):
                             self.wait = 0
                 self.wait += 1
             '''
+        return is_best_changed, is_lr_decayed
+
     def in_cooldown(self):
         return self.cooldown_counter > 0

@@ -87,10 +87,12 @@ net = Net().cuda()
 #t1 = net.cuda()
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
-scheduler = ReduceLROnPlateau(optimizer, 'min') # set up scheduler
+scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=1) # set up scheduler
 
 n_image_total = 0
 running_loss = 0.0
+is_lr_just_decayed = False
+shall_stop = False
 for epoch in range(n_epoch):  # loop over the dataset multiple times
     for i, data in enumerate(trainloader, 0):
         # get the inputs
@@ -116,9 +118,16 @@ for epoch in range(n_epoch):  # loop over the dataset multiple times
         #if i % 2000 == 1999:    # print every 2000 mini-batches
             print('[%d, %5d] loss: %.3f' %
                   (epoch + 1, i + 1, running_loss / 2000))
-            scheduler.step(running_loss / 2000, n_image_total + 1)  # update lr if needed
+            is_best_changed, is_lr_decayed = scheduler.step(running_loss / 2000, n_image_total + 1) # update lr if needed
+            if is_lr_just_decayed and (not is_best_changed):
+                shall_stop = True
+                break
+            is_lr_just_decayed = is_lr_decayed
             running_loss = 0.0
+
         n_image_total += 1
+    if shall_stop:
+        break
 
 print('Finished Training')
 
