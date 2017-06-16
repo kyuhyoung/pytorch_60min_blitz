@@ -1,5 +1,7 @@
 # tutorial web site : http://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
+# custom dataset site : http://kevin-ho.website/Make-a-Acquaintance-with-Pytorch/
 
+import os
 from PIL import Image
 import random
 import torch
@@ -16,21 +18,37 @@ import numpy as np
 from lr_scheduler import ReduceLROnPlateau
 
 # functions to show an image
+def get_exact_file_name_from_path(path):
+    return os.path.splitext(os.path.basename(path))[0]
+
 
 class CustomDataSet(utils_data.Dataset):
     def __init__(self, config):
         self.dataset_path = config['dataset_path']
-        self.num_samples = config['train_data_size']
-        self.ids_list = list(range(1, self.num_samples + 1))
-        random.shuffle(self.ids_list)
+        self.num_samples = config['data_size']
+        self.fn_label = config['fn_label']
+        #self.ids_list = list(range(1, self.num_samples + 1))
+        self.ids_list = list(range(self.num_samples))
+        li_tokens = [line.strip().split("\t") for line in open(self.fn_label)]
+        self.di_id_label = {get_exact_file_name_from_path(tokens[0]):int(tokens[1]) for tokens in li_tokens}
+        #random.shuffle(self.ids_list)
+        return
 
     def __getitem__(self, index):
-        image = Image.open('{}train/{:>06}.png'.format(self.dataset_path, self.ids_list[index]))
+        id_img = self.ids_list[index]
+        str_id = '{:>05}'.format(id_img)
+        fn_img = '{}/{}.png'.format(self.dataset_path, str_id)
+        image = Image.open(fn_img)
         image = np.array(image)
         image = np.rollaxis(image, 2, 0)
-        label = np.load('{}train_label(pytorch)/{:>06}.npy'.format(self.dataset_path, self.ids_list[index]))
+        image = image / 255.
+        #fn_label = '{}train_label(pytorch)/{:>05}.npy'.format(self.dataset_path, self.ids_list[index])
+        label = self.di_id_label[str_id]
+        #print('Read image of label %d as input : %s' % (label, fn_img))
+        #'''
         image = np.array(image).astype(np.float32)
-        label = np.array(label).astype(np.int)
+        #label = np.array(label).astype(np.int)
+        #'''
         return image, label
 
     def __len__(self):
@@ -78,23 +96,33 @@ transform = transforms.Compose(
     [transforms.ToTensor(),
      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
+execfile('install_cifar10.py')
+
+'''
 # the size of CIFAR10 dataset : around 341 MB
-#trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
-#                                        download=True, transform=transform)
-
-config = {'dataset_path':'./data', 'train_data_size':100}
-trainset = CustomDataSet(config)
-
-#trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
-#                                          shuffle=True, num_workers=2)
-
-trainloader = utils_data.DataLoader(trainset, batch_size=4,
-    shuffle=True, num_workers=2)
-
+trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
+                                        download=True, transform=transform)
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
+                                          shuffle=True, num_workers=2)
 testset = torchvision.datasets.CIFAR10(root='./data', train=False,
                                        download=True, transform=transform)
 testloader = torch.utils.data.DataLoader(testset, batch_size=4,
                                          shuffle=False, num_workers=2)
+'''
+#'''
+config_train = {'dataset_path':'./data/train', 'fn_label':'./data/train_map.txt',
+                'data_size':50000}
+config_test = {'dataset_path':'./data/test', 'fn_label':'./data/test_map.txt',
+               'data_size':10000}
+#config = {'dataset_path':'./data/train'}
+trainset = CustomDataSet(config_train)
+trainloader = utils_data.DataLoader(trainset, batch_size=4,
+    shuffle=True, num_workers=2)
+
+testset = CustomDataSet(config_test)
+testloader = utils_data.DataLoader(testset, batch_size=4,
+                                         shuffle=False, num_workers=2)
+#'''
 
 classes = ('plane', 'car', 'bird', 'cat',
            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -103,13 +131,13 @@ classes = ('plane', 'car', 'bird', 'cat',
 #'''
 
 # get some random training images
-dataiter = iter(trainloader)
-images, labels = dataiter.next()
+#dataiter = iter(trainloader)
+#images, labels = dataiter.next()
 
 # show images
-imshow(torchvision.utils.make_grid(images))
+#imshow(torchvision.utils.make_grid(images))
 # print labels
-print(' '.join('%5s' % classes[labels[j]] for j in range(4)))
+#print(' '.join('%5s' % classes[labels[j]] for j in range(4)))
 #'''
 
 #net = Net().cuda()
@@ -124,6 +152,7 @@ running_loss = 0.0
 is_lr_just_decayed = False
 shall_stop = False
 for epoch in range(n_epoch):  # loop over the dataset multiple times
+    print('epoch : %d' % (epoch + 1))
     for i, data in enumerate(trainloader, 0):
         # get the inputs
         inputs, labels = data
@@ -162,6 +191,7 @@ for epoch in range(n_epoch):  # loop over the dataset multiple times
 
 print('Finished Training')
 
+'''
 dataiter = iter(testloader)
 images, labels = dataiter.next()
 
@@ -174,7 +204,7 @@ outputs = net(Variable(images.cuda()))
 _, predicted = torch.max(outputs.data, 1)
 print('Predicted: ', ' '.join('%5s' % classes[predicted[j][0]]
                               for j in range(4)))
-
+'''
 
 correct = 0
 total = 0
@@ -200,3 +230,4 @@ print('Accuracy of the network on the 10000 test images: %d %%' % (
 for i in range(10):
     print('Accuracy of %5s : %2d %%' % (
         classes[i], 100 * class_correct[i] / class_total[i]))
+a = 0
