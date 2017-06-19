@@ -6,8 +6,9 @@ import sys
 import cifar_utils as ut
 import numpy as np
 from os.path import join, exists, abspath, basename
-from os import makedirs, listdir
+from os import makedirs, listdir, getcwd, chdir
 from PIL import Image
+from torchvision.datasets.utils import check_integrity, download_url
 
 ImgSize = 32
 #NumFeat = ImgSize * ImgSize * 3
@@ -32,7 +33,7 @@ def saveImage(fname, data):#, label, mapFile, regrFile, pad, **key_parms):
 
 
 
-def saveTrainImages(dir_save, li_label, n_im_per_batch, foldername)#byte_per_image, ):
+def saveTrainImages(dir_save, li_label, n_im_per_batch, foldername, ext_img):#byte_per_image, ):
 
     #data = {}
     #dataMean = np.zeros((3, ImgSize, ImgSize))
@@ -52,7 +53,7 @@ def saveTrainImages(dir_save, li_label, n_im_per_batch, foldername)#byte_per_ima
                 dir_label = abspath(join(dir_train, name_label))
                 if not exists(dir_label):
                     makedirs(dir_label)
-                fname = join(dir_label, ('%05d.png' % (i + (ifile - 1) * 10000)))
+                fname = join(dir_label, ('%05d.%s' % (i + (ifile - 1) * 10000, ext_img)))
                 saveImage(fname, data['data'][i, :])
                 print('Saved %d th image of %s at %s' % (i_total, name_label, fname))
 
@@ -61,7 +62,7 @@ def saveTrainImages(dir_save, li_label, n_im_per_batch, foldername)#byte_per_ima
     #saveMean('CIFAR-10_mean.xml', dataMean)
     return
 
-def saveTestImages(dir_save, li_label, n_im_per_batch, foldername):
+def saveTestImages(dir_save, li_label, n_im_per_batch, foldername, ext_img):
 
     #if not os.path.exists(foldername):
         #os.makedirs(foldername)
@@ -80,7 +81,7 @@ def saveTestImages(dir_save, li_label, n_im_per_batch, foldername):
             dir_label = abspath(join(dir_test, name_label))
             if not exists(dir_label):
                 makedirs(dir_label)
-            fname = join(dir_label, ('%05d.png' % i))
+            fname = join(dir_label, ('%05d.%s' % (i, ext_img)))
             saveImage(fname, data['data'][i, :])
             print('Saved %d th image of %s at %s' % (i_total, name_label, fname))
 
@@ -97,56 +98,85 @@ def check_if_image_set_exists(dir_save, li_label, n_im_per_label, ext_img):
     does_exist = True
     for label in li_label:
         dir_label = join(dir_save, label)
-        li_img_file = [file for file in listdir(dir_label) if file.endswith(ext_img)]
-        n_img = len(li_img_file)
-        if n_im_per_label != n_img:
+        if exists(dir_label):
+            li_img_file = [file for file in listdir(dir_label) if file.endswith(ext_img)]
+            n_img = len(li_img_file)
+            if n_im_per_label != n_img:
+                does_exist = False
+                break
+        else:
             does_exist = False
             break
     return does_exist
 
 
+def check_if_download_done(dir_save):
+
+    if not check_if_uncompression_done(dir_save):
+        filename = "cifar-10-python.tar.gz"
+        fn = join(dir_save, filename)
+        return exists(fn)
+    return True
+
+def check_if_uncompression_done(dir_save):
+
+    base_folder = 'cifar-10-batches-py'
+
+    train_list = [
+        ['data_batch_1', 'c99cafc152244af753f735de768cd75f'],
+        ['data_batch_2', 'd4bba439e000b95fd0a9bffe97cbabec'],
+        ['data_batch_3', '54ebc095f3ab1f0389bbae665268c751'],
+        ['data_batch_4', '634d18415352ddfa80567beed471001a'],
+        ['data_batch_5', '482c414d41f54cd18b22e5b47cb7c3cb'],
+    ]
+
+    test_list = [
+        ['test_batch', '40351d587109b95175f43aff81a1287e'],
+    ]
+
+    root = dir_save
+    for fentry in (train_list + test_list):
+        filename, md5 = fentry[0], fentry[1]
+        fpath = join(root, base_folder, filename)
+        if not check_integrity(fpath, md5):
+            return False
+    return True
 
 
 
 
 def prepare_cifar10_dataset(dir_save, ext_img):
-#if __name__ == "__main__":
+
     #dir_save = './data'
     n_im_per_label_train, n_im_per_label_test = 5000, 1000
     foldername_train, foldername_test = 'train', 'test'
-
     if not check_if_download_done(dir_save):
-        loadData('http://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz',
-                       dir_save)
+        import tarfile
+        url = 'http://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'
+        filename = "cifar-10-python.tar.gz"
+        tgz_md5 = 'c58f30108f718f92721af3b95e74349a'
+        root = dir_save
+        download_url(url, root, filename, tgz_md5)
+    if not check_if_uncompression_done(dir_save):
+        # extract file
+        cwd = getcwd()
+        tar = tarfile.open(join(root, filename), "r:gz")
+        chdir(root)
+        tar.extractall()
+        tar.close()
+        chdir(cwd)
+        #loadData(url, dir_save)
 
     li_label, byte_per_image, n_im_per_batch = get_label_names(dir_save)
-    if not check_if_image_set_exists(dir_save, li_label, n_im_per_label_train, ext_img):
-        saveTrainImages(dir_save, li_label, byte_per_image, n_im_per_batch, foldername_train)
-    if not check_if_image_set_exists(dir_save, li_label, n_im_per_label_test, ext_img):
-        saveTestImages(dir_save, li_label, byte_per_image, n_im_per_batch, foldername_test)
-    path_train_txt = join(dir_save, r'Train_cntk_text.txt')
-    path_test_txt = join(dir_save, r'Test_cntk_text.txt')
-    if not (exists(path_train_txt) and exists(path_test_txt)):
-        trn, tst= ut.loadData('http://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz',
-                              dir_save)
-        print ('Writing train text file...')
-        ut.saveTxt(path_train_txt, trn)
-        print ('Done.')
-        print ('Writing test text file...')
-        ut.saveTxt(path_test_txt, tst)
-        print ('Done.')
+    dir_train, dir_test = join(dir_save, foldername_train), join(dir_save, foldername_test)
+    if check_if_image_set_exists(
+            dir_train, li_label, n_im_per_label_train, ext_img):
+        print(dir_train + ' are already existing.')
     else:
-        print(path_train_txt + ' and ' + path_test_txt + ' are already existing.')
-    folder_train, folder_test = 'train', 'test'
-    dir_train_img = join(dir_save, folder_train)
-    dir_test_img = join(dir_save, folder_test)
-    if not (exists(dir_train_img) and exists(dir_test_img)):
-        print ('Converting train data to png images...')
-        ut.saveTrainImages(path_train_txt, dir_train_img, dir_save)
-        print ('Done.')
-        print ('Converting test data to png images...')
-        ut.saveTestImages(path_test_txt, dir_test_img, dir_save)
-        print ('Done.')
+        saveTrainImages(dir_save, li_label, n_im_per_batch, foldername_train, ext_img)
+    if check_if_image_set_exists(
+            dir_test, li_label, n_im_per_label_test, ext_img):
+        print(dir_test + ' are already existing.')
     else:
-        print(dir_train_img + ' and ' + dir_test_img + ' are already existing.')
-        print ('There is nothing to do. The traing and test image files are already made.')
+        saveTestImages(dir_save, li_label, n_im_per_batch, foldername_test, ext_img)
+    return li_label

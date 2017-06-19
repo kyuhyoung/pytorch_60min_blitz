@@ -2,6 +2,8 @@
 # custom dataset site : http://kevin-ho.website/Make-a-Acquaintance-with-Pytorch/
 
 import os
+from os.path import join
+from os import makedirs, listdir
 from PIL import Image
 import random
 import torch
@@ -13,6 +15,8 @@ import torch.utils.data as utils_data
 
 import torchvision
 import torchvision.transforms as transforms
+from torchvision import datasets
+
 import matplotlib.pyplot as plt
 import numpy as np
 from lr_scheduler import ReduceLROnPlateau
@@ -29,49 +33,42 @@ def imshow(img):
 def get_exact_file_name_from_path(path):
     return os.path.splitext(os.path.basename(path))[0]
 
-def make_dataloader_torchvison_memory(dir_data, transform):
+def make_dataloader_torchvison_memory(dir_data, di_set_transform):
     # the size of CIFAR10 dataset : around 341 MB
-    trainset = torchvision.datasets.CIFAR10(root=dir_data, train=True,
-                                            download=True, transform=transform)
+    trainset = torchvision.datasets.CIFAR10(
+        root=dir_data, train=True, download=True, transform=di_set_transform['train'])
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
                                               shuffle=True, num_workers=2)
-    testset = torchvision.datasets.CIFAR10(root=dir_data, train=False,
-                                           download=True, transform=transform)
+    testset = torchvision.datasets.CIFAR10(
+        root=dir_data, train=False, download=True, transform=di_set_transform['test'])
     testloader = torch.utils.data.DataLoader(testset, batch_size=4,
                                              shuffle=False, num_workers=2)
     return trainloader, testloader
 
-def make_dataloader_torchvison_imagefolder(dir_data, transform):
+def make_dataloader_torchvison_imagefolder(dir_data, data_transforms, ext_img):
 
-    #execfile('install_cifar10.py')
-    prepare_cifar10_dataset(dir_data)
+    li_label = prepare_cifar10_dataset(dir_data, ext_img)
+    li_set = ['train', 'test']
+    dsets = {x: datasets.ImageFolder(join(dir_data, x), data_transforms[x])
+             for x in li_set}
+    dset_loaders = {x: torch.utils.data.DataLoader(
+        dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
 
-    trainset = torchvision.datasets.CIFAR10(root=dir_data, train=True,
-                                            download=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
-                                              shuffle=True, num_workers=2)
-    testset = torchvision.datasets.CIFAR10(root=dir_data, train=False,
-                                           download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=4,
-                                             shuffle=False, num_workers=2)
+    trainloader, testloader = dset_loaders[li_set[0]], dset_loaders[li_set[1]]
     return trainloader, testloader
 
-def make_dataloader_custom_memory():
+def make_dataloader_custom_memory(dir_data, data_transforms, ext_img):
 
-    execfile('install_cifar10.py')
+    li_label = prepare_cifar10_dataset(dir_data, ext_img)
+    li_set = ['train', 'test']
+    data_size = {'train' : 50000, 'test' : 10000}
+    dsets = {x: Cifar10CustomMemory(
+        join(dir_data, x), data_size[x], data_transforms[x], li_label, ext_img)
+             for x in li_set}
+    dset_loaders = {x: torch.utils.data.DataLoader(
+        dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
+    trainloader, testloader = dset_loaders[li_set[0]], dset_loaders[li_set[1]]
 
-    config_train = {'dataset_path': './data/train', 'fn_label': './data/train_map.txt',
-                    'data_size': 50000}
-    config_test = {'dataset_path': './data/test', 'fn_label': './data/test_map.txt',
-                   'data_size': 10000}
-    # config = {'dataset_path':'./data/train'}
-    trainset = Cifar10CustomMemory(config_train)
-    trainloader = utils_data.DataLoader(trainset, batch_size=4,
-                                        shuffle=True, num_workers=2)
-
-    testset = Cifar10CustomMemory(config_test)
-    testloader = utils_data.DataLoader(testset, batch_size=4,
-                                       shuffle=False, num_workers=2)
     return trainloader, testloader
 
 def make_dataloader_custom_file():
@@ -94,36 +91,35 @@ def make_dataloader_custom_file():
 
 
 class Cifar10CustomMemory(utils_data.Dataset):
-    def __init__(self, config):
-        self.dataset_path = config['dataset_path']
-        self.num_samples = config['data_size']
-        self.fn_label = config['fn_label']
-        #self.ids_list = list(range(1, self.num_samples + 1))
-        self.ids_list = list(range(self.num_samples))
-        li_tokens = [line.strip().split("\t") for line in open(self.fn_label)]
-        self.di_id_label = {get_exact_file_name_from_path(tokens[0]):int(tokens[1]) for tokens in li_tokens}
-        #random.shuffle(self.ids_list)
+    def __init__(self, dataset_path, data_size, data_transform, li_label, ext_img):
+
+        self.dataset_path = dataset_path
+        self.num_samples = data_size
+        self.transform = data_transform
+        #for label in li_label:
+        self.li_img_classid = []
+        for idx, label in enumerate(li_label):
+            print('dumping images of [%s] into memory' % (label))
+            dir_label = join(dataset_path, label)
+            #li_fn_img = [file for file in listdir(dir_label) if file.endswith(ext_img)]
+            self.li_img_classid += [(Image.open(join(dir_label, fn_img)).convert('RGB'), idx) for fn_img in listdir(dir_label)
+                      if fn_img.endswith(ext_img)]
         return
 
     def __getitem__(self, index):
-        id_img = self.ids_list[index]
-        str_id = '{:>05}'.format(id_img)
-        fn_img = '{}/{}.png'.format(self.dataset_path, str_id)
-        image = Image.open(fn_img)
-        image = np.array(image)
-        image = np.rollaxis(image, 2, 0)
-        image = image / 255.
-        #fn_label = '{}train_label(pytorch)/{:>05}.npy'.format(self.dataset_path, self.ids_list[index])
-        label = self.di_id_label[str_id]
-        #print('Read image of label %d as input : %s' % (label, fn_img))
-        #'''
-        image = np.array(image).astype(np.float32)
-        #label = np.array(label).astype(np.int)
-        #'''
-        return image, label
+
+        img, target = self.li_img_classid[index]
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        #img = Image.fromarray(img)
+
+        if self.transform is not None:
+            img = self.transform(img)
+        return img, target
 
     def __len__(self):
-        return len(self.ids_list)
+        #return len(self.ids_list)
+        return len(self.li_img_classid)
 
 
 class Cifar10CustomFile(utils_data.Dataset):
@@ -197,23 +193,28 @@ def main():
     CUSTOM_FILE = 4
 
     #mode = TORCHVISION_MEMORY
-    mode = TORCHVISION_IMAGEFOLDER
-    #mode = CUSTOM_MEMORY
+    #mode = TORCHVISION_IMAGEFOLDER
+    mode = CUSTOM_MEMORY
     #mode = CUSTOM_FILE
 
     dir_data = './data'
+    ext_img = 'png'
     n_epoch = 100
 
     transform = transforms.Compose(
         [transforms.ToTensor(),
          transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
+    di_set_transform = {'train' : transform, 'test' : transform}
     if TORCHVISION_MEMORY == mode:
-        trainloader, testloader = make_dataloader_torchvison_memory(dir_data, transform)
+        trainloader, testloader = make_dataloader_torchvison_memory(
+            dir_data, di_set_transform)
     elif TORCHVISION_IMAGEFOLDER == mode:
-        trainloader, testloader = make_dataloader_torchvison_imagefolder(dir_data, transform)
+        trainloader, testloader = make_dataloader_torchvison_imagefolder(
+            dir_data, di_set_transform, ext_img)
     elif CUSTOM_MEMORY == mode:
-        trainloader, testloader = make_dataloader_custom_memory()
+        trainloader, testloader = make_dataloader_custom_memory(
+            dir_data, di_set_transform, ext_img)
     else:
         trainloader, testloader = make_dataloader_custom_file()
 
