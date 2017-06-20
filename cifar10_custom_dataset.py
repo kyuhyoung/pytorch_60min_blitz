@@ -66,7 +66,7 @@ def make_dataloader_custom_memory(dir_data, data_transforms, ext_img):
     li_set = ['train', 'test']
     data_size = {'train' : 50000, 'test' : 10000}
     dsets = {x: Cifar10CustomMemory(
-        join(dir_data, x), data_size[x], data_transforms[x], li_label, ext_img)
+        join(dir_data, x), data_size[x], data_transforms[x], li_class, ext_img)
              for x in li_set}
     dset_loaders = {x: torch.utils.data.DataLoader(
         dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
@@ -74,23 +74,44 @@ def make_dataloader_custom_memory(dir_data, data_transforms, ext_img):
 
     return trainloader, testloader, li_class
 
-def make_dataloader_custom_file():
+def make_dataloader_custom_file(dir_data, data_transforms, ext_img):
 
-    execfile('install_cifar10.py')
+    li_class = prepare_cifar10_dataset(dir_data, ext_img)
+    li_set = ['train', 'test']
+    data_size = {'train' : 50000, 'test' : 10000}
+    dsets = {x: Cifar10CustomFile(
+        join(dir_data, x), data_size[x], data_transforms[x], li_class, ext_img)
+             for x in li_set}
+    dset_loaders = {x: utils_data.DataLoader(
+        dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
+    trainloader, testloader = dset_loaders[li_set[0]], dset_loaders[li_set[1]]
 
-    config_train = {'dataset_path': './data/train', 'fn_label': './data/train_map.txt',
-                    'data_size': 50000}
-    config_test = {'dataset_path': './data/test', 'fn_label': './data/test_map.txt',
-                   'data_size': 10000}
-    # config = {'dataset_path':'./data/train'}
-    trainset = Cifar10CustomFile(config_train)
-    trainloader = utils_data.DataLoader(trainset, batch_size=4,
-                                        shuffle=True, num_workers=2)
+    return trainloader, testloader, li_class
 
-    testset = Cifar10CustomFile(config_test)
-    testloader = utils_data.DataLoader(testset, batch_size=4,
-                                       shuffle=False, num_workers=2)
-    return trainloader, testloader
+def make_dataloader_custom_tensordataset(dir_data, data_transforms, ext_img):
+
+    li_class = prepare_cifar10_dataset(dir_data, ext_img)
+    n_class = len(li_class)
+    li_set = ['train', 'test']
+    '''
+    features = {}
+    for set in li_set:
+        features[set] = [data_transforms[x](Image.open(join(join(join(dir_data, x), label), fn_img)).convert('RGB')) for fn_img in
+                            listdir(join(join(dir_data, x), label))
+                            if fn_img.endswith(ext_img) for label in li_class]
+    '''
+    features = {x : [data_transforms[x](Image.open(join(join(join(dir_data, x), label), fn_img)).convert('RGB'))
+                     for label in li_class for fn_img in listdir(join(join(dir_data, x), label)) if fn_img.endswith(ext_img)] for x in li_set}
+    a = 0
+    b = 0
+    targets = {x : [i_l for fn_img in
+                            listdir(join(join(dir_data, x), label))
+                            if fn_img.endswith(ext_img)] for x in li_set for i_l, label in enumerate(li_class)}
+    dsets = {x: utils_data.TensorDataset(features[x], targets[x]) for x in li_set}
+    dset_loaders = {x: utils_data.DataLoader(
+        dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
+    trainloader, testloader = dset_loaders[li_set[0]], dset_loaders[li_set[1]]
+    return trainloader, testloader, li_class
 
 
 class Cifar10CustomMemory(utils_data.Dataset):
@@ -126,36 +147,30 @@ class Cifar10CustomMemory(utils_data.Dataset):
 
 
 class Cifar10CustomFile(utils_data.Dataset):
-    def __init__(self, config):
-        self.dataset_path = config['dataset_path']
-        self.num_samples = config['data_size']
-        self.fn_label = config['fn_label']
-        #self.ids_list = list(range(1, self.num_samples + 1))
-        self.ids_list = list(range(self.num_samples))
-        li_tokens = [line.strip().split("\t") for line in open(self.fn_label)]
-        self.di_id_label = {get_exact_file_name_from_path(tokens[0]):int(tokens[1]) for tokens in li_tokens}
-        #random.shuffle(self.ids_list)
+    def __init__(self, dataset_path, data_size, data_transform, li_label, ext_img):
+        self.dataset_path = dataset_path
+        self.num_samples = data_size
+        self.transform = data_transform
+        self.li_fn_img_classid = []
+        for idx, label in enumerate(li_label):
+            dir_label = join(dataset_path, label)
+            self.li_fn_img_classid += [(join(dir_label, fn_img), idx) for fn_img in listdir(dir_label)
+                                       if fn_img.endswith(ext_img)]
         return
 
     def __getitem__(self, index):
-        id_img = self.ids_list[index]
-        str_id = '{:>05}'.format(id_img)
-        fn_img = '{}/{}.png'.format(self.dataset_path, str_id)
-        image = Image.open(fn_img)
-        image = np.array(image)
-        image = np.rollaxis(image, 2, 0)
-        image = image / 255.
-        #fn_label = '{}train_label(pytorch)/{:>05}.npy'.format(self.dataset_path, self.ids_list[index])
-        label = self.di_id_label[str_id]
-        #print('Read image of label %d as input : %s' % (label, fn_img))
-        #'''
-        image = np.array(image).astype(np.float32)
-        #label = np.array(label).astype(np.int)
-        #'''
-        return image, label
+
+        fn_img, target = self.li_fn_img_classid[index]
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        #img = Image.fromarray(img)
+        img = Image.open(fn_img).convert('RGB')
+        if self.transform is not None:
+            img = self.transform(img)
+        return img, target
 
     def __len__(self):
-        return len(self.ids_list)
+        return len(self.li_fn_img_classid)
 
 
 class Net(nn.Module):
@@ -198,8 +213,13 @@ def initialize(mode, dir_data, di_set_transform, ext_img):
     elif 'CUSTOM_MEMORY' == mode:
         trainloader, testloader, li_class = make_dataloader_custom_memory(
             dir_data, di_set_transform, ext_img)
+    elif 'CUSTOM_FILE' == mode:
+        trainloader, testloader, li_class = make_dataloader_custom_file(
+            dir_data, di_set_transform, ext_img)
     else:
-        trainloader, testloader, li_class = make_dataloader_custom_file()
+        trainloader, testloader, li_class = make_dataloader_custom_tensordataset(
+            dir_data, di_set_transform, ext_img)
+
 
     #net = Net().cuda()
     net = Net()
@@ -261,6 +281,8 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler,
                       (epoch + 1, i + 1, running_loss_avg))
                 is_best_changed, is_lr_decayed = scheduler.step(
                     running_loss_avg, n_image_total + 1) # update lr if needed
+                if i_batch >= 3:
+                    break
                 if is_lr_just_decayed and (not is_best_changed):
                     shall_stop = True
                     break
@@ -269,7 +291,8 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler,
 
             n_image_total += 1
         lap_epoch = time() - start_epoch
-        li_lap.append(lap_epoch)
+        lap_batch = lap_epoch / (i + 1)
+        li_lap.append(lap_batch)
         li_epoch.append(epoch + 1)
         ax_time.plot(li_epoch, li_lap, c=kolor)
         plt.pause(0.05)
@@ -278,6 +301,7 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler,
 
     print('Finished Training')
 
+    '''
     correct = 0
     total = 0
     class_correct = list(0. for i in range(10))
@@ -302,13 +326,13 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler,
     for i, klass in enumerate(li_class):
         print('Accuracy of %5s : %2d %%' % (
             klass, 100 * class_correct[i] / class_total[i]))
-
-
+    '''
+    return
 
 def main():
 
     li_mode = ['TORCHVISION_MEMORY', 'TORCHVISION_IMAGEFOLDER',
-               'CUSTOM_MEMORY', 'CUSTOM_FILE']
+               'CUSTOM_MEMORY', 'CUSTOM_FILE', 'CUSTOM_TENSORDATSET']
     '''
     #mode = TORCHVISION_MEMORY
     #mode = TORCHVISION_IMAGEFOLDER
@@ -317,7 +341,8 @@ def main():
     '''
     dir_data = './data'
     ext_img = 'png'
-    n_epoch = 100
+    #n_epoch = 100
+    n_epoch = 1
 
     transform = transforms.Compose(
         [transforms.ToTensor(),
@@ -329,13 +354,15 @@ def main():
     plt.ion()
     ax_time = fig.add_subplot(2, 1, 1)
     ax_loss = fig.add_subplot(2, 1, 2)
-    for mode in li_mode:
+    for i_m, mode in enumerate(li_mode):
         start = time()
         trainloader, testloader, net, criterion, optimizer, scheduler, li_class = \
             initialize(mode, dir_data, di_set_transform, ext_img)
         lap_init = time() - start
         #print('[%s] lap of initializing : %d sec' % (lap_sec))
-        kolor = np.random.rand(3,1)
+        kolor = np.random.rand(3)
+        if 2 == i_m:
+            a = 0
         train(trainloader, testloader, net, criterion, optimizer, scheduler,
               li_class, n_epoch, lap_init, ax_time, ax_loss, kolor)
 
