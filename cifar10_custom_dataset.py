@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from lr_scheduler import ReduceLROnPlateau
 from install_cifar10 import prepare_cifar10_dataset
+from time import time
 
 
 def imshow(img):
@@ -43,11 +44,13 @@ def make_dataloader_torchvison_memory(dir_data, di_set_transform):
         root=dir_data, train=False, download=True, transform=di_set_transform['test'])
     testloader = torch.utils.data.DataLoader(testset, batch_size=4,
                                              shuffle=False, num_workers=2)
-    return trainloader, testloader
+    li_class = ('plane', 'car', 'bird', 'cat',
+               'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+    return trainloader, testloader, li_class
 
 def make_dataloader_torchvison_imagefolder(dir_data, data_transforms, ext_img):
 
-    li_label = prepare_cifar10_dataset(dir_data, ext_img)
+    li_class = prepare_cifar10_dataset(dir_data, ext_img)
     li_set = ['train', 'test']
     dsets = {x: datasets.ImageFolder(join(dir_data, x), data_transforms[x])
              for x in li_set}
@@ -55,11 +58,11 @@ def make_dataloader_torchvison_imagefolder(dir_data, data_transforms, ext_img):
         dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
 
     trainloader, testloader = dset_loaders[li_set[0]], dset_loaders[li_set[1]]
-    return trainloader, testloader
+    return trainloader, testloader, li_class
 
 def make_dataloader_custom_memory(dir_data, data_transforms, ext_img):
 
-    li_label = prepare_cifar10_dataset(dir_data, ext_img)
+    li_class = prepare_cifar10_dataset(dir_data, ext_img)
     li_set = ['train', 'test']
     data_size = {'train' : 50000, 'test' : 10000}
     dsets = {x: Cifar10CustomMemory(
@@ -69,7 +72,7 @@ def make_dataloader_custom_memory(dir_data, data_transforms, ext_img):
         dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
     trainloader, testloader = dset_loaders[li_set[0]], dset_loaders[li_set[1]]
 
-    return trainloader, testloader
+    return trainloader, testloader, li_class
 
 def make_dataloader_custom_file():
 
@@ -184,57 +187,19 @@ class Net(nn.Module):
         return num_features
 
 
+def initialize(mode, dir_data, di_set_transform, ext_img):
 
-def main():
-
-    TORCHVISION_MEMORY = 1
-    TORCHVISION_IMAGEFOLDER = 2
-    CUSTOM_MEMORY = 3
-    CUSTOM_FILE = 4
-
-    #mode = TORCHVISION_MEMORY
-    #mode = TORCHVISION_IMAGEFOLDER
-    mode = CUSTOM_MEMORY
-    #mode = CUSTOM_FILE
-
-    dir_data = './data'
-    ext_img = 'png'
-    n_epoch = 100
-
-    transform = transforms.Compose(
-        [transforms.ToTensor(),
-         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-
-    di_set_transform = {'train' : transform, 'test' : transform}
-    if TORCHVISION_MEMORY == mode:
-        trainloader, testloader = make_dataloader_torchvison_memory(
+    if 'TORCHVISION_MEMORY' == mode:
+        trainloader, testloader, li_class = make_dataloader_torchvison_memory(
             dir_data, di_set_transform)
-    elif TORCHVISION_IMAGEFOLDER == mode:
-        trainloader, testloader = make_dataloader_torchvison_imagefolder(
+    elif 'TORCHVISION_IMAGEFOLDER' == mode:
+        trainloader, testloader, li_class = make_dataloader_torchvison_imagefolder(
             dir_data, di_set_transform, ext_img)
-    elif CUSTOM_MEMORY == mode:
-        trainloader, testloader = make_dataloader_custom_memory(
+    elif 'CUSTOM_MEMORY' == mode:
+        trainloader, testloader, li_class = make_dataloader_custom_memory(
             dir_data, di_set_transform, ext_img)
     else:
-        trainloader, testloader = make_dataloader_custom_file()
-
-
-
-    classes = ('plane', 'car', 'bird', 'cat',
-               'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
-
-    #'''
-
-    # get some random training images
-    #dataiter = iter(trainloader)
-    #images, labels = dataiter.next()
-
-    # show images
-    #imshow(torchvision.utils.make_grid(images))
-    # print labels
-    #print(' '.join('%5s' % classes[labels[j]] for j in range(4)))
-    #'''
+        trainloader, testloader, li_class = make_dataloader_custom_file()
 
     #net = Net().cuda()
     net = Net()
@@ -243,16 +208,28 @@ def main():
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
     scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=1) # set up scheduler
 
+    return trainloader, testloader, net, criterion, optimizer, scheduler, li_class
+
+def train(trainloader, testloader, net, criterion, optimizer, scheduler,
+          li_class, n_epoch, lap_init, ax_time, ax_loss):
+
     n_image_total = 0
+    i_batch = 0
     running_loss = 0.0
+    li_i_batch = []
+    li_loss_avg = []
+    li_lap = [lap_init]
+    li_epoch = [0]
     is_lr_just_decayed = False
     shall_stop = False
+    ax_time.plot(li_epoch, li_lap)
+    plt.pause(0.05)
     for epoch in range(n_epoch):  # loop over the dataset multiple times
         print('epoch : %d' % (epoch + 1))
+        start_epoch = time()
         for i, data in enumerate(trainloader, 0):
             # get the inputs
             inputs, labels = data
-
             # wrap them in Variable
             #inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
             inputs, labels = Variable(inputs), Variable(labels)
@@ -272,9 +249,18 @@ def main():
             running_loss += loss.data[0]
             if n_image_total % 2000 == 1999:    # print every 2000 mini-batches
             #if i % 2000 == 1999:    # print every 2000 mini-batches
+
+                running_loss_avg = running_loss / 2000
+                li_i_batch.append(i_batch)
+                li_loss_avg.append(running_loss_avg)
+                ax_loss.plot(li_i_batch, li_loss_avg)
+                plt.pause(0.05)
+                i_batch += 1
+
                 print('[%d, %5d] loss: %.3f' %
-                      (epoch + 1, i + 1, running_loss / 2000))
-                is_best_changed, is_lr_decayed = scheduler.step(running_loss / 2000, n_image_total + 1) # update lr if needed
+                      (epoch + 1, i + 1, running_loss_avg))
+                is_best_changed, is_lr_decayed = scheduler.step(
+                    running_loss_avg, n_image_total + 1) # update lr if needed
                 if is_lr_just_decayed and (not is_best_changed):
                     shall_stop = True
                     break
@@ -282,25 +268,15 @@ def main():
                 running_loss = 0.0
 
             n_image_total += 1
+        lap_epoch = time() - start_epoch
+        li_lap.append(lap_epoch)
+        li_epoch.append(epoch + 1)
+        ax_time.plot(li_epoch, li_lap)
+        plt.pause(0.05)
         if shall_stop:
             break
 
     print('Finished Training')
-
-    '''
-    dataiter = iter(testloader)
-    images, labels = dataiter.next()
-
-    # print images
-    imshow(torchvision.utils.make_grid(images))
-    print('GroundTruth: ', ' '.join('%5s' % classes[labels[j]] for j in range(4)))
-
-
-    outputs = net(Variable(images.cuda()))
-    _, predicted = torch.max(outputs.data, 1)
-    print('Predicted: ', ' '.join('%5s' % classes[predicted[j][0]]
-                                  for j in range(4)))
-    '''
 
     correct = 0
     total = 0
@@ -323,9 +299,45 @@ def main():
     print('Accuracy of the network on the 10000 test images: %d %%' % (
         100 * correct / total))
 
-    for i in range(10):
+    for i, klass in enumerate(li_class):
         print('Accuracy of %5s : %2d %%' % (
-            classes[i], 100 * class_correct[i] / class_total[i]))
+            klass, 100 * class_correct[i] / class_total[i]))
+
+
+
+def main():
+
+    li_mode = ['TORCHVISION_MEMORY', 'TORCHVISION_IMAGEFOLDER',
+               'CUSTOM_MEMORY', 'CUSTOM_FILE']
+    '''
+    #mode = TORCHVISION_MEMORY
+    #mode = TORCHVISION_IMAGEFOLDER
+    mode = CUSTOM_MEMORY
+    #mode = CUSTOM_FILE
+    '''
+    dir_data = './data'
+    ext_img = 'png'
+    n_epoch = 100
+
+    transform = transforms.Compose(
+        [transforms.ToTensor(),
+         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+    di_set_transform = {'train' : transform, 'test' : transform}
+
+    fig = plt.figure()#num=None, figsize=(20, 30), dpi=500)
+    plt.ion()
+    ax_time = fig.add_subplot(2, 1, 1)
+    ax_loss = fig.add_subplot(2, 1, 2)
+    for mode in li_mode:
+        start = time()
+        trainloader, testloader, net, criterion, optimizer, scheduler, li_class = \
+            initialize(mode, dir_data, di_set_transform, ext_img)
+        lap_init = time() - start
+        #print('[%s] lap of initializing : %d sec' % (lap_sec))
+        train(trainloader, testloader, net, criterion, optimizer, scheduler,
+              li_class, n_epoch, lap_init, ax_time, ax_loss)
+
     return
 
 if __name__ == "__main__":
