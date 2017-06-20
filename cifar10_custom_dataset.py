@@ -211,7 +211,7 @@ def initialize(mode, dir_data, di_set_transform, ext_img):
     return trainloader, testloader, net, criterion, optimizer, scheduler, li_class
 
 def train(trainloader, testloader, net, criterion, optimizer, scheduler,
-          li_class, n_epoch, lap_init, ax_time, ax_loss):
+          li_class, n_epoch, lap_init, ax_time, ax_loss, kolor):
 
     n_image_total = 0
     i_batch = 0
@@ -222,7 +222,7 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler,
     li_epoch = [0]
     is_lr_just_decayed = False
     shall_stop = False
-    ax_time.plot(li_epoch, li_lap)
+    ax_time.plot(li_epoch, li_lap, c=kolor)
     plt.pause(0.05)
     for epoch in range(n_epoch):  # loop over the dataset multiple times
         print('epoch : %d' % (epoch + 1))
@@ -253,7 +253,7 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler,
                 running_loss_avg = running_loss / 2000
                 li_i_batch.append(i_batch)
                 li_loss_avg.append(running_loss_avg)
-                ax_loss.plot(li_i_batch, li_loss_avg)
+                ax_loss.plot(li_i_batch, li_loss_avg, c=kolor)
                 plt.pause(0.05)
                 i_batch += 1
 
@@ -271,7 +271,7 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler,
         lap_epoch = time() - start_epoch
         li_lap.append(lap_epoch)
         li_epoch.append(epoch + 1)
-        ax_time.plot(li_epoch, li_lap)
+        ax_time.plot(li_epoch, li_lap, c=kolor)
         plt.pause(0.05)
         if shall_stop:
             break
@@ -335,8 +335,9 @@ def main():
             initialize(mode, dir_data, di_set_transform, ext_img)
         lap_init = time() - start
         #print('[%s] lap of initializing : %d sec' % (lap_sec))
+        kolor = np.random.rand(3,1)
         train(trainloader, testloader, net, criterion, optimizer, scheduler,
-              li_class, n_epoch, lap_init, ax_time, ax_loss)
+              li_class, n_epoch, lap_init, ax_time, ax_loss, kolor)
 
     return
 
