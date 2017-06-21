@@ -22,6 +22,7 @@ import numpy as np
 from lr_scheduler import ReduceLROnPlateau
 from install_cifar10 import prepare_cifar10_dataset
 from time import time
+from matplotlib.ticker import MaxNLocator
 
 
 def imshow(img):
@@ -93,20 +94,45 @@ def make_dataloader_custom_tensordataset(dir_data, data_transforms, ext_img):
     li_class = prepare_cifar10_dataset(dir_data, ext_img)
     n_class = len(li_class)
     li_set = ['train', 'test']
-    '''
+    #'''
     features = {}
+    targets = {}
     for set in li_set:
-        features[set] = [data_transforms[x](Image.open(join(join(join(dir_data, x), label), fn_img)).convert('RGB')) for fn_img in
-                            listdir(join(join(dir_data, x), label))
-                            if fn_img.endswith(ext_img) for label in li_class]
+        ts_img_total, ts_label_total = torch.Tensor(), torch.LongTensor()
+        print('building input vectors for [%s]' % (set))
+        for i_l, label in enumerate(li_class):
+            #if i_l > 0:
+            #    break
+            print('dumping images of [%s] into memory' % (label))
+            dir_label = join(join(dir_data, set), label)
+            #'''
+            li_ts_img = [data_transforms[set](Image.open(join(dir_label, fn_img)).convert('RGB')) for fn_img in
+                    listdir(dir_label)
+                    if fn_img.endswith(ext_img)]
+            #'''
+            n_img_4_this_label = len(li_ts_img)
+            ts_img = torch.stack(li_ts_img)
+            ts_img_total = torch.cat((ts_img_total, ts_img))
+            li_label = [i_l for i in range(n_img_4_this_label)]
+            ts_label = torch.LongTensor(li_label)
+            #li_label = [torch.Tensor(i_l) for i in range(n_img_4_this_label)]
+            #ts_label = torch.stack(li_label)
+            ts_label_total = torch.cat((ts_label_total, ts_label))
+            #ts_img_tmp = torch.Tensor(li_img_tmp)
+            #li_img += li_img_tmp
+            #li_label += [i_l for i in range(n_img_4_this_label)]
+        #features[set] = torch.Tensor(li_img)
+        #targets[set] = torch.Tensor(li_label)
+        features[set] = ts_img_total
+        targets[set] = ts_label_total
+    #'''
     '''
     features = {x : [data_transforms[x](Image.open(join(join(join(dir_data, x), label), fn_img)).convert('RGB'))
                      for label in li_class for fn_img in listdir(join(join(dir_data, x), label)) if fn_img.endswith(ext_img)] for x in li_set}
-    a = 0
-    b = 0
     targets = {x : [i_l for fn_img in
                             listdir(join(join(dir_data, x), label))
                             if fn_img.endswith(ext_img)] for x in li_set for i_l, label in enumerate(li_class)}
+    '''
     dsets = {x: utils_data.TensorDataset(features[x], targets[x]) for x in li_set}
     dset_loaders = {x: utils_data.DataLoader(
         dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
@@ -230,82 +256,44 @@ def initialize(mode, dir_data, di_set_transform, ext_img):
 
     return trainloader, testloader, net, criterion, optimizer, scheduler, li_class
 
-def train(trainloader, testloader, net, criterion, optimizer, scheduler,
-          li_class, n_epoch, lap_init, ax_time, ax_loss, kolor):
 
-    n_image_total = 0
-    i_batch = 0
-    running_loss = 0.0
-    li_i_batch = []
-    li_loss_avg = []
-    li_lap = [lap_init]
-    li_epoch = [0]
-    is_lr_just_decayed = False
+def validate_epoch(net, n_loss_rising, loss_avg_pre, ax,
+                   li_i_epoch, li_loss_avg_val,
+                   testloader, criterion, th_n_loss_rising, kolor, i_eopch):
+    net.eval()
     shall_stop = False
-    ax_time.plot(li_epoch, li_lap, c=kolor)
-    plt.pause(0.05)
-    for epoch in range(n_epoch):  # loop over the dataset multiple times
-        print('epoch : %d' % (epoch + 1))
-        start_epoch = time()
-        for i, data in enumerate(trainloader, 0):
-            # get the inputs
-            inputs, labels = data
-            # wrap them in Variable
-            #inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
-            inputs, labels = Variable(inputs), Variable(labels)
+    sum_loss = 0
+    for i, data in enumerate(testloader):
+        inputs, labels = data
+        inputs, labels = Variable(inputs), Variable(labels)
+        #images, labels = images.cuda(), labels.cuda()
+        outputs = net(inputs)
+        loss = criterion(outputs, labels)
+        sum_loss += loss.data[0]
+    loss_avg = sum_loss / (i + 1)
+    if loss_avg_pre <= loss_avg:
+        n_loss_rising += 1
+        if n_loss_rising >= th_n_loss_rising:
+            shall_stop = True
+    else:
+        n_loss_rising = max(0, n_loss_rising - 1)
+    li_i_epoch.append(i_eopch)
+    li_loss_avg_val.append(loss_avg)
+    ax.plot(li_i_epoch, li_loss_avg_val, c=kolor)
+    loss_avg_pre = loss_avg
+    return shall_stop, net, n_loss_rising, loss_avg_pre, ax, \
+           li_i_epoch, li_loss_avg_val
 
-            # zero the parameter gradients
-            optimizer.zero_grad()
 
-            # forward + backward + optimize
-            outputs = net(inputs)
 
-            #labels += 10
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            #n_image_total += labels.size()[0]
-            # print statistics
-            running_loss += loss.data[0]
-            if n_image_total % 2000 == 1999:    # print every 2000 mini-batches
-            #if i % 2000 == 1999:    # print every 2000 mini-batches
+def test(net, testloader, li_class):
 
-                running_loss_avg = running_loss / 2000
-                li_i_batch.append(i_batch)
-                li_loss_avg.append(running_loss_avg)
-                ax_loss.plot(li_i_batch, li_loss_avg, c=kolor)
-                plt.pause(0.05)
-                i_batch += 1
-
-                print('[%d, %5d] loss: %.3f' %
-                      (epoch + 1, i + 1, running_loss_avg))
-                is_best_changed, is_lr_decayed = scheduler.step(
-                    running_loss_avg, n_image_total + 1) # update lr if needed
-                if i_batch >= 3:
-                    break
-                if is_lr_just_decayed and (not is_best_changed):
-                    shall_stop = True
-                    break
-                is_lr_just_decayed = is_lr_decayed
-                running_loss = 0.0
-
-            n_image_total += 1
-        lap_epoch = time() - start_epoch
-        lap_batch = lap_epoch / (i + 1)
-        li_lap.append(lap_batch)
-        li_epoch.append(epoch + 1)
-        ax_time.plot(li_epoch, li_lap, c=kolor)
-        plt.pause(0.05)
-        if shall_stop:
-            break
-
-    print('Finished Training')
-
-    '''
+    net.eval()
+    n_class = len(li_class)
     correct = 0
     total = 0
-    class_correct = list(0. for i in range(10))
-    class_total = list(0. for i in range(10))
+    class_correct = list(0. for i in range(n_class))
+    class_total = list(0. for i in range(n_class))
 
     for data in testloader:
         images, labels = data
@@ -326,23 +314,138 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler,
     for i, klass in enumerate(li_class):
         print('Accuracy of %5s : %2d %%' % (
             klass, 100 * class_correct[i] / class_total[i]))
-    '''
+
+
+
+
+
+
+
+def train_epoch(
+        net, trainloader, optimizer, criterion, scheduler, n_image_total,
+        running_loss, is_lr_just_decayed,
+        li_i_batch, i_batch, li_loss_avg_train, ax_loss_train, sec, epoch,
+        kolor):
+    shall_stop = False
+    net.train()
+    for i, data in enumerate(trainloader, 0):
+        # get the inputs
+        inputs, labels = data
+        # wrap them in Variable
+        # inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
+        inputs, labels = Variable(inputs), Variable(labels)
+        # zero the parameter gradients
+        optimizer.zero_grad()
+        # forward + backward + optimize
+        outputs = net(inputs)
+        # labels += 10
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        # n_image_total += labels.size()[0]
+        # print statistics
+        running_loss += loss.data[0]
+        if n_image_total % 2000 == 1999:  # print every 2000 mini-batches
+            # if i % 2000 == 1999:    # print every 2000 mini-batches
+            running_loss_avg = running_loss / 2000
+            li_i_batch.append(i_batch)
+            li_loss_avg_train.append(running_loss_avg)
+            ax_loss_train.plot(li_i_batch, li_loss_avg_train, c=kolor)
+            plt.pause(sec)
+            i_batch += 1
+            print('[%d, %5d] loss: %.3f' %
+                  (epoch + 1, i + 1, running_loss_avg))
+            is_best_changed, is_lr_decayed = scheduler.step(
+                running_loss_avg, n_image_total + 1)  # update lr if needed
+            if i_batch >= 3:
+                break
+            if is_lr_just_decayed and (not is_best_changed):
+                shall_stop = True
+                break
+            is_lr_just_decayed = is_lr_decayed
+            running_loss = 0.0
+        n_image_total += 1
+    return shall_stop, net, optimizer, scheduler, n_image_total, \
+           running_loss, li_i_batch, li_loss_avg_train, ax_loss_train, \
+           is_lr_just_decayed, i + 1
+
+
+
+
+
+
+
+
+
+
+def train(trainloader, testloader, net, criterion, optimizer, scheduler,
+          li_class, n_epoch, lap_init, ax_time, ax_loss_train, ax_loss_val,
+          legend, kolor):
+
+    sec = 0.01
+    n_image_total = 0
+    i_batch = 0
+    running_loss = 0.0
+    li_i_batch = []
+    li_loss_avg_train = []
+    li_loss_avg_val = []
+    li_lap = [lap_init]
+    li_epoch = [0]
+    is_lr_just_decayed = False
+    #shall_stop = False
+    ax_time.plot(li_epoch, li_lap, c=kolor)
+    plt.pause(sec)
+    li_i_epoch = []
+    n_loss_rising, th_n_loss_rising, loss_avg_pre = 0, 2, 100000000000
+    for epoch in range(n_epoch):  # loop over the dataset multiple times
+        print('epoch : %d' % (epoch + 1))
+        start_train = time()
+        shall_stop_train, net, optimizer, scheduler, n_image_total, \
+        running_loss, li_i_batch, li_loss_avg_train, ax_loss_train, \
+        is_lr_just_decayed, n_batch = train_epoch(
+            net, trainloader, optimizer, criterion, scheduler, n_image_total,
+            running_loss, is_lr_just_decayed, li_i_batch, i_batch,
+            li_loss_avg_train, ax_loss_train, sec, epoch, kolor)
+        shall_stop_val, net, n_loss_rising, loss_avg_pre, ax_loss_val = \
+            validate_epoch(
+                net, n_loss_rising, loss_avg_pre, ax_loss_val,
+                li_i_epoch, li_loss_avg_val,
+                testloader, criterion, th_n_loss_rising, kolor, epoch)
+        lap_train = time() - start_train
+        lap_batch = lap_train / n_batch
+        li_lap.append(lap_batch)
+        li_epoch.append(epoch + 1)
+        ax_time.plot(li_epoch, li_lap, c=kolor)
+        ax_time.legend()
+        plt.pause(sec)
+        if shall_stop_train or shall_stop_val:
+            break
+    ax_time.plot(li_epoch, li_lap, c=kolor, label=legend)
+    ax_time.legend()
+    ax_loss_train.plot(li_i_batch, li_loss_avg_train, c=kolor, label=legend)
+    ax_loss_train.legend()
+    ax_loss_val.plot(li_i_batch, li_loss_avg_train, c=kolor, label=legend)
+    ax_loss_val.legend()
+    plt.pause(sec)
+    print('Finished Training')
+
     return
 
 def main():
 
+    #'''
     li_mode = ['TORCHVISION_MEMORY', 'TORCHVISION_IMAGEFOLDER',
                'CUSTOM_MEMORY', 'CUSTOM_FILE', 'CUSTOM_TENSORDATSET']
+    #'''
     '''
-    #mode = TORCHVISION_MEMORY
-    #mode = TORCHVISION_IMAGEFOLDER
-    mode = CUSTOM_MEMORY
-    #mode = CUSTOM_FILE
+    li_mode = ['CUSTOM_TENSORDATSET', 'TORCHVISION_MEMORY',
+               'TORCHVISION_IMAGEFOLDER', 'CUSTOM_MEMORY', 'CUSTOM_FILE']
     '''
     dir_data = './data'
     ext_img = 'png'
     #n_epoch = 100
     n_epoch = 1
+    interval = 6000
 
     transform = transforms.Compose(
         [transforms.ToTensor(),
@@ -350,10 +453,18 @@ def main():
 
     di_set_transform = {'train' : transform, 'test' : transform}
 
-    fig = plt.figure()#num=None, figsize=(20, 30), dpi=500)
+    #fig = plt.figure(num=None, figsize=(1, 2), dpi=500)
+    fig = plt.figure(num=None, figsize=(12, 18), dpi=100)
     plt.ion()
-    ax_time = fig.add_subplot(2, 1, 1)
-    ax_loss = fig.add_subplot(2, 1, 2)
+    ax_time = fig.add_subplot(3, 1, 1)
+    ax_time.set_title('Sec. per every %d th images. 0 : sec. for init.' % (interval))
+    ax_time.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax_loss_train = fig.add_subplot(3, 1, 2)
+    ax_loss_train.set_title('Avg. loss for train')
+    ax_loss_train.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax_loss_val = fig.add_subplot(3, 1, 3)
+    ax_loss_val.set_title('Avg. loss for val.')
+    ax_loss_val.xaxis.set_major_locator(MaxNLocator(integer=True))
     for i_m, mode in enumerate(li_mode):
         start = time()
         trainloader, testloader, net, criterion, optimizer, scheduler, li_class = \
@@ -361,11 +472,11 @@ def main():
         lap_init = time() - start
         #print('[%s] lap of initializing : %d sec' % (lap_sec))
         kolor = np.random.rand(3)
-        if 2 == i_m:
-            a = 0
+        #if 2 == i_m:
+        #    a = 0
         train(trainloader, testloader, net, criterion, optimizer, scheduler,
-              li_class, n_epoch, lap_init, ax_time, ax_loss, kolor)
-
+              li_class, n_epoch, lap_init, ax_time, ax_loss_train, ax_loss_val,
+              mode, kolor)
     return
 
 if __name__ == "__main__":
