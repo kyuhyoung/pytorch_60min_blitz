@@ -118,7 +118,7 @@ for epoch in range(n_epoch):  # loop over the dataset multiple times
         #if i % 2000 == 1999:    # print every 2000 mini-batches
             print('[%d, %5d] loss: %.3f' %
                   (epoch + 1, i + 1, running_loss / 2000))
-            is_best_changed, is_lr_decayed = scheduler.step(running_loss / 2000, n_image_total + 1) # update lr if needed
+            is_best_changed, is_lr_decayed = scheduler.step(running_loss / 2000, n_image_total) # update lr if needed
             if is_lr_just_decayed and (not is_best_changed):
                 shall_stop = True
                 break

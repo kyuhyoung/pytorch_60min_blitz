@@ -35,33 +35,36 @@ def imshow(img):
 def get_exact_file_name_from_path(path):
     return os.path.splitext(os.path.basename(path))[0]
 
-def make_dataloader_torchvison_memory(dir_data, di_set_transform):
+def make_dataloader_torchvison_memory(dir_data, di_set_transform,
+                                      n_img_per_batch, n_worker):
     # the size of CIFAR10 dataset : around 341 MB
     trainset = torchvision.datasets.CIFAR10(
         root=dir_data, train=True, download=True, transform=di_set_transform['train'])
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
-                                              shuffle=True, num_workers=2)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=n_img_per_batch,
+                                              shuffle=True, num_workers=n_worker)
     testset = torchvision.datasets.CIFAR10(
         root=dir_data, train=False, download=True, transform=di_set_transform['test'])
-    testloader = torch.utils.data.DataLoader(testset, batch_size=4,
-                                             shuffle=False, num_workers=2)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=n_img_per_batch,
+                                             shuffle=False, num_workers=n_worker)
     li_class = ('plane', 'car', 'bird', 'cat',
                'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
     return trainloader, testloader, li_class
 
-def make_dataloader_torchvison_imagefolder(dir_data, data_transforms, ext_img):
+def make_dataloader_torchvison_imagefolder(dir_data, data_transforms, ext_img,
+                                           n_img_per_batch, n_worker):
 
     li_class = prepare_cifar10_dataset(dir_data, ext_img)
     li_set = ['train', 'test']
     dsets = {x: datasets.ImageFolder(join(dir_data, x), data_transforms[x])
              for x in li_set}
     dset_loaders = {x: torch.utils.data.DataLoader(
-        dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
+        dsets[x], batch_size=n_img_per_batch, shuffle=True, num_workers=n_worker) for x in li_set}
 
     trainloader, testloader = dset_loaders[li_set[0]], dset_loaders[li_set[1]]
     return trainloader, testloader, li_class
 
-def make_dataloader_custom_memory(dir_data, data_transforms, ext_img):
+def make_dataloader_custom_memory(dir_data, data_transforms, ext_img,
+                                  n_img_per_batch, n_worker):
 
     li_class = prepare_cifar10_dataset(dir_data, ext_img)
     li_set = ['train', 'test']
@@ -70,12 +73,13 @@ def make_dataloader_custom_memory(dir_data, data_transforms, ext_img):
         join(dir_data, x), data_size[x], data_transforms[x], li_class, ext_img)
              for x in li_set}
     dset_loaders = {x: torch.utils.data.DataLoader(
-        dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
+        dsets[x], batch_size=n_img_per_batch, shuffle=True, num_workers=n_worker) for x in li_set}
     trainloader, testloader = dset_loaders[li_set[0]], dset_loaders[li_set[1]]
 
     return trainloader, testloader, li_class
 
-def make_dataloader_custom_file(dir_data, data_transforms, ext_img):
+def make_dataloader_custom_file(dir_data, data_transforms, ext_img,
+                                n_img_per_batch, n_worker):
 
     li_class = prepare_cifar10_dataset(dir_data, ext_img)
     li_set = ['train', 'test']
@@ -84,12 +88,13 @@ def make_dataloader_custom_file(dir_data, data_transforms, ext_img):
         join(dir_data, x), data_size[x], data_transforms[x], li_class, ext_img)
              for x in li_set}
     dset_loaders = {x: utils_data.DataLoader(
-        dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
+        dsets[x], batch_size=n_img_per_batch, shuffle=True, num_workers=n_worker) for x in li_set}
     trainloader, testloader = dset_loaders[li_set[0]], dset_loaders[li_set[1]]
 
     return trainloader, testloader, li_class
 
-def make_dataloader_custom_tensordataset(dir_data, data_transforms, ext_img):
+def make_dataloader_custom_tensordataset(dir_data, data_transforms, ext_img,
+                                         n_img_per_batch, n_worker):
 
     li_class = prepare_cifar10_dataset(dir_data, ext_img)
     n_class = len(li_class)
@@ -135,7 +140,7 @@ def make_dataloader_custom_tensordataset(dir_data, data_transforms, ext_img):
     '''
     dsets = {x: utils_data.TensorDataset(features[x], targets[x]) for x in li_set}
     dset_loaders = {x: utils_data.DataLoader(
-        dsets[x], batch_size=4, shuffle=True, num_workers=4) for x in li_set}
+        dsets[x], batch_size=n_img_per_batch, shuffle=True, num_workers=n_worker) for x in li_set}
     trainloader, testloader = dset_loaders[li_set[0]], dset_loaders[li_set[1]]
     return trainloader, testloader, li_class
 
@@ -228,23 +233,23 @@ class Net(nn.Module):
         return num_features
 
 
-def initialize(mode, dir_data, di_set_transform, ext_img):
+def initialize(mode, dir_data, di_set_transform, ext_img, n_img_per_batch, n_worker):
 
     if 'TORCHVISION_MEMORY' == mode:
         trainloader, testloader, li_class = make_dataloader_torchvison_memory(
-            dir_data, di_set_transform)
+            dir_data, di_set_transform, n_img_per_batch, n_worker)
     elif 'TORCHVISION_IMAGEFOLDER' == mode:
         trainloader, testloader, li_class = make_dataloader_torchvison_imagefolder(
-            dir_data, di_set_transform, ext_img)
+            dir_data, di_set_transform, ext_img, n_img_per_batch, n_worker)
     elif 'CUSTOM_MEMORY' == mode:
         trainloader, testloader, li_class = make_dataloader_custom_memory(
-            dir_data, di_set_transform, ext_img)
+            dir_data, di_set_transform, ext_img, n_img_per_batch, n_worker)
     elif 'CUSTOM_FILE' == mode:
         trainloader, testloader, li_class = make_dataloader_custom_file(
-            dir_data, di_set_transform, ext_img)
+            dir_data, di_set_transform, ext_img, n_img_per_batch, n_worker)
     else:
         trainloader, testloader, li_class = make_dataloader_custom_tensordataset(
-            dir_data, di_set_transform, ext_img)
+            dir_data, di_set_transform, ext_img, n_img_per_batch, n_worker)
 
 
     #net = Net().cuda()
@@ -252,37 +257,44 @@ def initialize(mode, dir_data, di_set_transform, ext_img):
     #t1 = net.cuda()
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
-    scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=1) # set up scheduler
+    scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=1, patience = 8, epsilon=0.00001, min_lr=0.000001) # set up scheduler
 
     return trainloader, testloader, net, criterion, optimizer, scheduler, li_class
 
 
 def validate_epoch(net, n_loss_rising, loss_avg_pre, ax,
-                   li_i_epoch, li_loss_avg_val,
-                   testloader, criterion, th_n_loss_rising, kolor, i_eopch):
+                   li_n_img_val, li_loss_avg_val,
+                   testloader, criterion, th_n_loss_rising, kolor, n_img_train, sec):
     net.eval()
     shall_stop = False
     sum_loss = 0
+    n_img_val = 0
+    start_val = time()
     for i, data in enumerate(testloader):
         inputs, labels = data
+        n_img_4_batch = labels.size()[0]
         inputs, labels = Variable(inputs), Variable(labels)
         #images, labels = images.cuda(), labels.cuda()
         outputs = net(inputs)
         loss = criterion(outputs, labels)
         sum_loss += loss.data[0]
-    loss_avg = sum_loss / (i + 1)
+        n_img_val += n_img_4_batch
+
+    lap_val = time() - start_val
+    loss_avg = sum_loss / n_img_val
     if loss_avg_pre <= loss_avg:
         n_loss_rising += 1
         if n_loss_rising >= th_n_loss_rising:
             shall_stop = True
     else:
         n_loss_rising = max(0, n_loss_rising - 1)
-    li_i_epoch.append(i_eopch)
+    li_n_img_val.append(n_img_train)
     li_loss_avg_val.append(loss_avg)
-    ax.plot(li_i_epoch, li_loss_avg_val, c=kolor)
+    ax.plot(li_n_img_val, li_loss_avg_val, c=kolor)
+    plt.pause(sec)
     loss_avg_pre = loss_avg
     return shall_stop, net, n_loss_rising, loss_avg_pre, ax, \
-           li_i_epoch, li_loss_avg_val
+           li_n_img_val, li_loss_avg_val, lap_val, n_img_val
 
 
 
@@ -322,15 +334,16 @@ def test(net, testloader, li_class):
 
 
 def train_epoch(
-        net, trainloader, optimizer, criterion, scheduler, n_image_total,
-        running_loss, is_lr_just_decayed,
-        li_i_batch, i_batch, li_loss_avg_train, ax_loss_train, sec, epoch,
-        kolor):
+        net, trainloader, optimizer, criterion, scheduler, n_img_total,
+        n_img_interval, n_img_milestone, running_loss, is_lr_just_decayed,
+        li_n_img, li_loss_avg_train, ax_loss_train, sec, epoch,
+        kolor, interval_train_loss):
     shall_stop = False
     net.train()
     for i, data in enumerate(trainloader, 0):
         # get the inputs
         inputs, labels = data
+        n_img_4_batch = labels.size()[0]
         # wrap them in Variable
         # inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
         inputs, labels = Variable(inputs), Variable(labels)
@@ -345,28 +358,37 @@ def train_epoch(
         # n_image_total += labels.size()[0]
         # print statistics
         running_loss += loss.data[0]
-        if n_image_total % 2000 == 1999:  # print every 2000 mini-batches
+        #n_image_total += n_img_per_batch
+        n_img_total += n_img_4_batch
+        n_img_interval += n_img_4_batch
+
+        #if n_image_total % interval_train_loss == interval_train_loss - 1:  # print every 2000 mini-batches
+        #if n_image_total % interval_train_loss == 0:  # print every 2000 mini-batches
+        if n_img_total > n_img_milestone:  # print every 2000 mini-batches
+
             # if i % 2000 == 1999:    # print every 2000 mini-batches
-            running_loss_avg = running_loss / 2000
-            li_i_batch.append(i_batch)
+            running_loss_avg = running_loss / n_img_interval
+            li_n_img.append(n_img_total)
             li_loss_avg_train.append(running_loss_avg)
-            ax_loss_train.plot(li_i_batch, li_loss_avg_train, c=kolor)
+            ax_loss_train.plot(li_n_img, li_loss_avg_train, c=kolor)
             plt.pause(sec)
-            i_batch += 1
-            print('[%d, %5d] loss: %.3f' %
+            #i_batch += 1
+            print('[%d, %5d] avg. loss per image : %.5f' %
                   (epoch + 1, i + 1, running_loss_avg))
             is_best_changed, is_lr_decayed = scheduler.step(
-                running_loss_avg, n_image_total + 1)  # update lr if needed
-            if i_batch >= 3:
-                break
-            if is_lr_just_decayed and (not is_best_changed):
+                running_loss_avg, n_img_total)  # update lr if needed
+            running_loss = 0.0
+            n_img_interval = 0
+            n_img_milestone = n_img_total + interval_train_loss
+            #'''
+            #if is_lr_just_decayed and (not is_best_changed):
+            if is_lr_just_decayed and is_lr_decayed:
                 shall_stop = True
                 break
+            #'''
             is_lr_just_decayed = is_lr_decayed
-            running_loss = 0.0
-        n_image_total += 1
-    return shall_stop, net, optimizer, scheduler, n_image_total, \
-           running_loss, li_i_batch, li_loss_avg_train, ax_loss_train, \
+    return shall_stop, net, optimizer, scheduler, n_img_total, n_img_interval, \
+           n_img_milestone, running_loss, li_n_img, li_loss_avg_train, ax_loss_train, \
            is_lr_just_decayed, i + 1
 
 
@@ -378,15 +400,16 @@ def train_epoch(
 
 
 
-def train(trainloader, testloader, net, criterion, optimizer, scheduler,
-          li_class, n_epoch, lap_init, ax_time, ax_loss_train, ax_loss_val,
-          legend, kolor):
+def train(trainloader, testloader, net, criterion, optimizer, scheduler, #li_class,
+          n_epoch, lap_init, ax_time, ax_loss_train, ax_loss_val,
+          legend, kolor, n_img_per_batch, interval_train_loss):
 
     sec = 0.01
     n_image_total = 0
-    i_batch = 0
+    n_img_interval = 0
+    n_img_milestone = interval_train_loss
     running_loss = 0.0
-    li_i_batch = []
+    li_n_img_train, li_n_img_val = [], []
     li_loss_avg_train = []
     li_loss_avg_val = []
     li_lap = [lap_init]
@@ -395,25 +418,27 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler,
     #shall_stop = False
     ax_time.plot(li_epoch, li_lap, c=kolor)
     plt.pause(sec)
-    li_i_epoch = []
-    n_loss_rising, th_n_loss_rising, loss_avg_pre = 0, 2, 100000000000
+    #li_i_epoch = []
+    n_loss_rising, th_n_loss_rising, loss_avg_pre = 0, 3, 100000000000
     for epoch in range(n_epoch):  # loop over the dataset multiple times
         print('epoch : %d' % (epoch + 1))
-        start_train = time()
-        shall_stop_train, net, optimizer, scheduler, n_image_total, \
-        running_loss, li_i_batch, li_loss_avg_train, ax_loss_train, \
+        shall_stop_train, net, optimizer, scheduler, n_image_total, n_img_interval, \
+        n_img_milestone, running_loss, li_n_img_train, li_loss_avg_train, ax_loss_train, \
         is_lr_just_decayed, n_batch = train_epoch(
             net, trainloader, optimizer, criterion, scheduler, n_image_total,
-            running_loss, is_lr_just_decayed, li_i_batch, i_batch,
-            li_loss_avg_train, ax_loss_train, sec, epoch, kolor)
-        shall_stop_val, net, n_loss_rising, loss_avg_pre, ax_loss_val = \
+            n_img_interval, n_img_milestone, running_loss, is_lr_just_decayed,
+            li_n_img_train, li_loss_avg_train, ax_loss_train, sec, epoch,
+            kolor, interval_train_loss)
+        shall_stop_val, net, n_loss_rising, loss_avg_pre, ax_loss_val, \
+        li_n_img_val, li_loss_avg_val, lap_val, n_img_val = \
             validate_epoch(
                 net, n_loss_rising, loss_avg_pre, ax_loss_val,
-                li_i_epoch, li_loss_avg_val,
-                testloader, criterion, th_n_loss_rising, kolor, epoch)
-        lap_train = time() - start_train
-        lap_batch = lap_train / n_batch
-        li_lap.append(lap_batch)
+                li_n_img_val, li_loss_avg_val,
+                testloader, criterion, th_n_loss_rising, kolor, n_image_total, sec)
+        #lap_train = time() - start_train
+        n_batch_val = n_img_val / n_img_per_batch
+        lap_batch = lap_val / n_batch_val
+        li_lap.append(lap_val)
         li_epoch.append(epoch + 1)
         ax_time.plot(li_epoch, li_lap, c=kolor)
         ax_time.legend()
@@ -422,9 +447,9 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler,
             break
     ax_time.plot(li_epoch, li_lap, c=kolor, label=legend)
     ax_time.legend()
-    ax_loss_train.plot(li_i_batch, li_loss_avg_train, c=kolor, label=legend)
+    ax_loss_train.plot(li_n_img_train, li_loss_avg_train, c=kolor, label=legend)
     ax_loss_train.legend()
-    ax_loss_val.plot(li_i_batch, li_loss_avg_train, c=kolor, label=legend)
+    ax_loss_val.plot(li_n_img_val, li_loss_avg_val, c=kolor, label=legend)
     ax_loss_val.legend()
     plt.pause(sec)
     print('Finished Training')
@@ -444,8 +469,11 @@ def main():
     dir_data = './data'
     ext_img = 'png'
     #n_epoch = 100
-    n_epoch = 1
-    interval = 6000
+    n_epoch = 50
+    #n_img_per_batch = 40
+    n_img_per_batch = 60
+    n_worker = 4
+    interval_train_loss = int(round(20000 / n_img_per_batch)) * n_img_per_batch
 
     transform = transforms.Compose(
         [transforms.ToTensor(),
@@ -457,26 +485,30 @@ def main():
     fig = plt.figure(num=None, figsize=(12, 18), dpi=100)
     plt.ion()
     ax_time = fig.add_subplot(3, 1, 1)
-    ax_time.set_title('Sec. per every %d th images. 0 : sec. for init.' % (interval))
+    ax_time.set_title(
+        'Elapsed time (sec.) of validation on 10k images vs. epoch. Note that value for epoch 0 is the elapsed time of init.')
     ax_time.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax_loss_train = fig.add_subplot(3, 1, 2)
-    ax_loss_train.set_title('Avg. loss for train')
+    ax_loss_train.set_title('Avg. train loss per image vs. # train input images')
     ax_loss_train.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax_loss_val = fig.add_subplot(3, 1, 3)
-    ax_loss_val.set_title('Avg. loss for val.')
+    ax_loss_val.set_title('Avg. val. loss per image vs. # train input images')
     ax_loss_val.xaxis.set_major_locator(MaxNLocator(integer=True))
     for i_m, mode in enumerate(li_mode):
         start = time()
         trainloader, testloader, net, criterion, optimizer, scheduler, li_class = \
-            initialize(mode, dir_data, di_set_transform, ext_img)
+            initialize(
+                mode, dir_data, di_set_transform, ext_img, n_img_per_batch, n_worker)
         lap_init = time() - start
         #print('[%s] lap of initializing : %d sec' % (lap_sec))
         kolor = np.random.rand(3)
         #if 2 == i_m:
         #    a = 0
-        train(trainloader, testloader, net, criterion, optimizer, scheduler,
-              li_class, n_epoch, lap_init, ax_time, ax_loss_train, ax_loss_val,
-              mode, kolor)
+        train(trainloader, testloader, net, criterion, optimizer, scheduler, #li_class,
+              n_epoch, lap_init, ax_time, ax_loss_train, ax_loss_val,
+              mode, kolor, n_img_per_batch, interval_train_loss)
+    print('Finished all.')
+    plt.pause(1000)
     return
 
 if __name__ == "__main__":

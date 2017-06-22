@@ -67,6 +67,7 @@ class ReduceLROnPlateau(object):
             raise RuntimeError('Learning Rate Plateau Reducing mode %s is unknown!')
         if self.mode == 'min':
             self.monitor_op = lambda a, b: np.less(a, b - self.epsilon)
+            #self.monitor_op = lambda a, b: np.less(a, b * 0.9999)
             self.best = np.Inf
         else:
             self.monitor_op = lambda a, b: np.greater(a, b + self.epsilon)
@@ -78,7 +79,7 @@ class ReduceLROnPlateau(object):
     def reset(self):
         self._reset()
 
-    def step(self, metrics, epoch):
+    def step(self, metrics, n_img):
         is_best_changed = False
         is_lr_decayed = False
         current = metrics
@@ -95,7 +96,7 @@ class ReduceLROnPlateau(object):
                 self.wait = 0
             '''
             if self.monitor_op(current, self.best):
-                print('\nThe best is changed from %.3f to %.3f at epoch %d' % (self.best, current, epoch))
+                print('\nThe best is changed from %.5f to %.5f after %d images have been input' % (self.best, current, n_img))
                 self.best = current
                 self.wait = 0
                 is_best_changed = True
@@ -109,7 +110,7 @@ class ReduceLROnPlateau(object):
                                 new_lr = max(new_lr, self.min_lr)
                                 param_group['lr'] = new_lr
                                 if self.verbose > 0:
-                                    print('\nEpoch %05d: reducing learning rate to %s.' % (epoch, new_lr))
+                                    print('\nReduced learning rate from %f to %f after %d images.' % (old_lr, new_lr, n_img))
                                 self.cooldown_counter = self.cooldown
                                 self.wait = 0
                                 is_lr_decayed = True
