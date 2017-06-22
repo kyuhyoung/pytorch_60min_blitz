@@ -233,7 +233,7 @@ class Net(nn.Module):
         return num_features
 
 
-def initialize(mode, dir_data, di_set_transform, ext_img, n_img_per_batch, n_worker):
+def initialize(mode, is_gpu, dir_data, di_set_transform, ext_img, n_img_per_batch, n_worker):
 
     if 'TORCHVISION_MEMORY' == mode:
         trainloader, testloader, li_class = make_dataloader_torchvison_memory(
@@ -256,6 +256,9 @@ def initialize(mode, dir_data, di_set_transform, ext_img, n_img_per_batch, n_wor
     net = Net()
     #t1 = net.cuda()
     criterion = nn.CrossEntropyLoss()
+    if is_gpu:
+        net.cuda()
+        criterion.cuda()
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
     scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=1, patience = 8, epsilon=0.00001, min_lr=0.000001) # set up scheduler
 
@@ -264,7 +267,8 @@ def initialize(mode, dir_data, di_set_transform, ext_img, n_img_per_batch, n_wor
 
 def validate_epoch(net, n_loss_rising, loss_avg_pre, ax,
                    li_n_img_val, li_loss_avg_val,
-                   testloader, criterion, th_n_loss_rising, kolor, n_img_train, sec):
+                   testloader, criterion, th_n_loss_rising,
+                   kolor, n_img_train, sec, is_gpu):
     net.eval()
     shall_stop = False
     sum_loss = 0
@@ -273,6 +277,8 @@ def validate_epoch(net, n_loss_rising, loss_avg_pre, ax,
     for i, data in enumerate(testloader):
         inputs, labels = data
         n_img_4_batch = labels.size()[0]
+        if is_gpu:
+            inputs, labels = inputs.cuda(), labels.cuda()
         inputs, labels = Variable(inputs), Variable(labels)
         #images, labels = images.cuda(), labels.cuda()
         outputs = net(inputs)
@@ -298,7 +304,7 @@ def validate_epoch(net, n_loss_rising, loss_avg_pre, ax,
 
 
 
-def test(net, testloader, li_class):
+def test(net, testloader, li_class, is_gpu):
 
     net.eval()
     n_class = len(li_class)
@@ -309,6 +315,8 @@ def test(net, testloader, li_class):
 
     for data in testloader:
         images, labels = data
+        if is_gpu:
+            images, labels = images.cuda(), labels.cuda()
         #images, labels = images.cuda(), labels.cuda()
         outputs = net(Variable(images))
         _, predicted = torch.max(outputs.data, 1)
@@ -337,7 +345,7 @@ def train_epoch(
         net, trainloader, optimizer, criterion, scheduler, n_img_total,
         n_img_interval, n_img_milestone, running_loss, is_lr_just_decayed,
         li_n_img, li_loss_avg_train, ax_loss_train, sec, epoch,
-        kolor, interval_train_loss):
+        kolor, interval_train_loss, is_gpu):
     shall_stop = False
     net.train()
     for i, data in enumerate(trainloader, 0):
@@ -346,6 +354,8 @@ def train_epoch(
         n_img_4_batch = labels.size()[0]
         # wrap them in Variable
         # inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
+        if is_gpu:
+            inputs, labels = inputs.cuda(), labels.cuda()
         inputs, labels = Variable(inputs), Variable(labels)
         # zero the parameter gradients
         optimizer.zero_grad()
@@ -400,7 +410,7 @@ def train_epoch(
 
 
 
-def train(trainloader, testloader, net, criterion, optimizer, scheduler, #li_class,
+def train(is_gpu, trainloader, testloader, net, criterion, optimizer, scheduler, #li_class,
           n_epoch, lap_init, ax_time, ax_loss_train, ax_loss_val,
           legend, kolor, n_img_per_batch, interval_train_loss):
 
@@ -428,13 +438,14 @@ def train(trainloader, testloader, net, criterion, optimizer, scheduler, #li_cla
             net, trainloader, optimizer, criterion, scheduler, n_image_total,
             n_img_interval, n_img_milestone, running_loss, is_lr_just_decayed,
             li_n_img_train, li_loss_avg_train, ax_loss_train, sec, epoch,
-            kolor, interval_train_loss)
+            kolor, interval_train_loss, is_gpu)
         shall_stop_val, net, n_loss_rising, loss_avg_pre, ax_loss_val, \
         li_n_img_val, li_loss_avg_val, lap_val, n_img_val = \
             validate_epoch(
                 net, n_loss_rising, loss_avg_pre, ax_loss_val,
                 li_n_img_val, li_loss_avg_val,
-                testloader, criterion, th_n_loss_rising, kolor, n_image_total, sec)
+                testloader, criterion, th_n_loss_rising, kolor, n_image_total, sec,
+                is_gpu)
         #lap_train = time() - start_train
         n_batch_val = n_img_val / n_img_per_batch
         lap_batch = lap_val / n_batch_val
@@ -474,6 +485,7 @@ def main():
     n_img_per_batch = 60
     n_worker = 4
     interval_train_loss = int(round(20000 / n_img_per_batch)) * n_img_per_batch
+    is_gpu = torch.cuda.device_count() > 0
 
     transform = transforms.Compose(
         [transforms.ToTensor(),
@@ -498,13 +510,13 @@ def main():
         start = time()
         trainloader, testloader, net, criterion, optimizer, scheduler, li_class = \
             initialize(
-                mode, dir_data, di_set_transform, ext_img, n_img_per_batch, n_worker)
+                mode, is_gpu, dir_data, di_set_transform, ext_img, n_img_per_batch, n_worker)
         lap_init = time() - start
         #print('[%s] lap of initializing : %d sec' % (lap_sec))
         kolor = np.random.rand(3)
         #if 2 == i_m:
         #    a = 0
-        train(trainloader, testloader, net, criterion, optimizer, scheduler, #li_class,
+        train(is_gpu, trainloader, testloader, net, criterion, optimizer, scheduler, #li_class,
               n_epoch, lap_init, ax_time, ax_loss_train, ax_loss_val,
               mode, kolor, n_img_per_batch, interval_train_loss)
     print('Finished all.')
